@@ -1,19 +1,17 @@
-import { TouchableOpacity, Image, StyleSheet, Text } from 'react-native';
+import { TouchableOpacity, Image, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from "expo-router";
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
 
 export default function HomeScreen() {
   const router = useRouter();
 
   return (
-    <ThemedView style={styles.container}>
+    <View style={styles.container}>
       <Image source={require('@/assets/images/logo.png')} style={styles.logo} />
 
-      <ThemedText type="title" style={styles.title}>🎵 CryptoSong 🎵</ThemedText>
-      <ThemedText type="defaultSemiBold" style={styles.subtitle}>
+      <Text style={styles.title}>🎵 CryptoSong 🎵</Text>
+      <Text style={styles.subtitle}>
         Secure your messages through music
-      </ThemedText>
+      </Text>
 
       <TouchableOpacity style={styles.button} onPress={() => router.push("/encryption")}>
         <Text style={styles.buttonText}>Encrypt</Text>
@@ -21,7 +19,7 @@ export default function HomeScreen() {
       <TouchableOpacity style={styles.button} onPress={() => router.push("/decryption")}>
         <Text style={styles.buttonText}>Decrypt</Text>
       </TouchableOpacity>
-    </ThemedView>
+    </View>
   );
 }
 
@@ -30,8 +28,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#121212',
     paddingHorizontal: 20,
+    backgroundColor: '#FFF',
   },
   logo: {
     width: 120,
@@ -41,12 +39,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFFFFF',
     marginBottom: 5,
   },
   subtitle: {
     fontSize: 16,
-    color: '#BBBBBB',
+    color: '#777',
     marginBottom: 20,
   },
   button: {

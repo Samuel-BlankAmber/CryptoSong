@@ -1,9 +1,6 @@
 import { useState } from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, Text } from 'react-native';
+import { StyleSheet, TextInput, TouchableOpacity, Text, View } from 'react-native';
 import { Audio } from 'expo-av';
-
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
 
 export default function EncryptionScreen() {
   const [text, setText] = useState('');
@@ -43,8 +40,8 @@ export default function EncryptionScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <ThemedText type="title" style={{ paddingBottom: 20 }}>🎵 Encryption 🎵</ThemedText>
+    <View style={styles.container}>
+      <Text style={styles.title}>🎵 Encryption 🎵</Text>
       <TextInput
         style={styles.input}
         placeholder='Enter text to encrypt'
@@ -56,7 +53,7 @@ export default function EncryptionScreen() {
       <TouchableOpacity style={styles.button} onPress={isRecording ? stopRecording : startRecording}>
         <Text style={styles.buttonText}>{isRecording ? 'Stop Recording' : 'Start Recording'}</Text>
       </TouchableOpacity>
-    </ThemedView>
+    </View>
   );
 }
 
@@ -65,8 +62,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#121212',
+    backgroundColor: '#FFF',
     paddingHorizontal: 20,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
   },
   input: {
     height: 50,
@@ -77,7 +79,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     width: '80%',
     borderRadius: 8,
-    marginBottom: 20,
+    marginBottom: 10,
   },
   button: {
     backgroundColor: '#1DB954',

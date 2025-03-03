@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import * as FileSystem from 'expo-file-system';
 import { Platform, StyleSheet, TextInput, TouchableOpacity, Text, View } from 'react-native';
 import { Audio } from 'expo-av';
 import { RecordingOptions, AndroidOutputFormat, AndroidAudioEncoder, IOSOutputFormat, IOSAudioQuality } from 'expo-av/build/Audio/Recording';
+import * as FileSystem from 'expo-file-system';
 import * as Clipboard from 'expo-clipboard';
 import { generateAesKeyFromString, aesGcmEncrypt } from '../utils/cryptography';
 
@@ -48,23 +48,26 @@ interface SongInfo {
   matches: unknown[];
 }
 
+enum State {
+  Idle,
+  Recording,
+  FindingSong,
+  SongTooLong,
+  NoSongFound,
+  ErrorWhileFindingSong,
+  Encrypting,
+  ErrorWhileEncrypting,
+  SuccessfulEncryption,
+}
+
 export default function EncryptionScreen() {
   const [text, setText] = useState('');
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isFindingSong, setIsFindingSong] = useState(false);
-  const [cannotFindSong, setCannotFindSong] = useState(false);
-  const [isSongTooLong, setIsSongTooLong] = useState(false);
   const [songInfo, setSongInfo] = useState<SongInfo | {}>({});
-  const [isEncrypting, setIsEncrypting] = useState(false);
-  const [encryptionFailed, setEncryptionFailed] = useState(false);
-  const [isEncryptionDone, setIsEncryptionDone] = useState(false);
+  const [state, setState] = useState(State.Idle);
 
   async function startRecording() {
-    setCannotFindSong(false);
-    setIsSongTooLong(false);
-    setEncryptionFailed(false);
-    setIsEncryptionDone(false);
+    setState(State.Idle);
     setSongInfo({});
     try {
       const { granted } = await Audio.requestPermissionsAsync();
@@ -77,15 +80,14 @@ export default function EncryptionScreen() {
       });
       const { recording } = await Audio.Recording.createAsync(SHAZAM_RECORDING_OPTIONS);
       setRecording(recording);
-      setIsRecording(true);
+      setState(State.Recording);
     } catch (error) {
-      console.error('Failed to start recording', error);
+      console.error('Failed to start recording:', error);
     }
   }
 
   async function stopRecording() {
     if (!recording) return;
-    setIsRecording(false);
     await recording.stopAndUnloadAsync();
     await Audio.setAudioModeAsync(
       {
@@ -93,9 +95,71 @@ export default function EncryptionScreen() {
       }
     );
     const uri = recording.getURI()!;
-    console.log('Recording stopped and stored at', uri);
+    console.log('Recording stopped and stored at:', uri);
     setRecording(null);
-    await handleEncryption(uri);
+    await setSongInfoFromUri(uri);
+    await handleEncryption();
+  }
+
+  async function setSongInfoFromUri(songUri: string) {
+    setState(State.FindingSong);
+    const songB64 = await getRecordingBase64(songUri);
+
+    console.log('Song base64 length:', songB64.length);
+    if (songB64.length >= 500 * 1000) {
+      console.log('Song base64 is too large');
+      setState(State.SongTooLong);
+      return;
+    }
+
+    const songInfo = await getSongInfo(songB64);
+    if (Object.keys(songInfo).length === 0) {
+      console.log('Failed to get song info');
+      setState(State.ErrorWhileFindingSong);
+      return;
+    }
+
+    if (songInfo['matches'].length === 0) {
+      console.log('No song found');
+      setState(State.NoSongFound);
+      return;
+    }
+
+    setSongInfo(songInfo);
+  }
+
+  async function handleEncryption() {
+    // Goes without saying, but this is highly insecure.
+    // Please do not use this to encrypt anything important,
+    // or risk having your data stolen.
+
+    if (!('track' in songInfo)) {
+      console.error('No song found');
+      return;
+    }
+
+    const title = songInfo['track']['title'];
+    const subtitle = songInfo['track']['subtitle'];
+    const key = title + subtitle;
+    console.log('Song title:', title);
+    console.log('Subtitle:', subtitle);
+
+    setState(State.Encrypting);
+    console.log('Encrypting text:', text);
+    try {
+      const aesKey = generateAesKeyFromString(key);
+      const ciphertext = await aesGcmEncrypt(text, aesKey);
+      console.log('Ciphertext:', ciphertext);
+      await Clipboard.setStringAsync(ciphertext);
+      setState(State.SuccessfulEncryption);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Failed to encrypt text', error);
+      } else {
+        console.error('An unknown error occurred when encrypting the text', error);
+      }
+      setState(State.ErrorWhileEncrypting);
+    }
   }
 
   async function getRecordingBase64(uri: string) {
@@ -113,58 +177,6 @@ export default function EncryptionScreen() {
       encoding: FileSystem.EncodingType.Base64,
     });
     return fileInfo;
-  }
-
-  async function handleEncryption(songUri: string) {
-    setIsFindingSong(true);
-    const songB64 = await getRecordingBase64(songUri);
-    console.log('Song base64 length:', songB64.length);
-    if (songB64.length >= 500 * 1000) {
-      console.log('Song base64 is too large');
-      setIsSongTooLong(true);
-      return;
-    }
-    const songInfo = await getSongInfo(songB64);
-    setIsFindingSong(false);
-    if (Object.keys(songInfo).length === 0) {
-      console.log('Failed to get song info');
-      setCannotFindSong(true);
-      return;
-    }
-    if (songInfo['matches'].length === 0) {
-      console.log('No song found');
-      setCannotFindSong(true);
-      return;
-    }
-    setSongInfo(songInfo);
-    const title = songInfo['track']['title'];
-    const subtitle = songInfo['track']['subtitle'];
-    console.log('Song found:', title);
-    console.log('Subtitle:', subtitle);
-    // Goes without saying, but this is highly insecure.
-    // Please do not use this to encrypt anything important,
-    // or risk having your data stolen.
-    const key = title + subtitle;
-    setIsEncrypting(true);
-    console.log('Encrypting text:', text);
-    let ciphertext;
-    try {
-      const aesKey = generateAesKeyFromString(key);
-      ciphertext = await aesGcmEncrypt(text, aesKey);
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        console.error('Failed to encrypt text', error);
-      } else {
-        console.error('An unknown error occurred when encrypting the text', error);
-      }
-      setEncryptionFailed(true);
-      setIsEncrypting(false);
-      return;
-    }
-    setIsEncrypting(false);
-    console.log('Ciphertext:', ciphertext);
-    await Clipboard.setStringAsync(ciphertext);
-    setIsEncryptionDone(true);
   }
 
   async function getSongInfo(songB64: string) {
@@ -206,13 +218,14 @@ export default function EncryptionScreen() {
         onChangeText={setText}
       />
 
-      <TouchableOpacity style={styles.button} onPress={isRecording ? stopRecording : startRecording}>
-        <Text style={styles.buttonText}>{isRecording ? 'Stop Recording' : 'Start Recording'}</Text>
+      <TouchableOpacity style={styles.button} onPress={state === State.Recording ? stopRecording : startRecording}>
+        <Text style={styles.buttonText}>{state === State.Recording ? 'Stop Recording' : 'Start Recording'}</Text>
       </TouchableOpacity>
 
-      {isFindingSong && <Text style={styles.resultsText}>Finding song...</Text>}
-      {isSongTooLong && <Text style={styles.resultsText}>Song is too long</Text>}
-      {cannotFindSong && <Text style={styles.resultsText}>Failed to find song</Text>}
+      {state === State.FindingSong && <Text style={styles.resultsText}>Finding song...</Text>}
+      {state === State.SongTooLong && <Text style={styles.resultsText}>Song is too long</Text>}
+      {state === State.NoSongFound && <Text style={styles.resultsText}>No song found</Text>}
+      {state == State.ErrorWhileFindingSong && <Text style={styles.resultsText}>Failed to find song</Text>}
       {'track' in songInfo && (
         <View>
           <Text style={styles.resultsText}>Song found:</Text>
@@ -221,9 +234,9 @@ export default function EncryptionScreen() {
         </View>
       )}
 
-      {isEncrypting && <Text style={styles.resultsText}>Encrypting...</Text>}
-      {encryptionFailed && <Text style={styles.resultsText}>Failed to encrypt text</Text>}
-      {isEncryptionDone && <Text style={styles.resultsText}>Ciphertext copied to clipboard!</Text>}
+      {state === State.Encrypting && <Text style={styles.resultsText}>Encrypting...</Text>}
+      {state === State.ErrorWhileEncrypting && <Text style={styles.resultsText}>Failed to encrypt text</Text>}
+      {state === State.SuccessfulEncryption && <Text style={styles.resultsText}>Ciphertext copied to clipboard!</Text>}
     </View>
   );
 }

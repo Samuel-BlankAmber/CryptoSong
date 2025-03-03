@@ -10,7 +10,7 @@ export default function HomeScreen() {
 
       <Text style={styles.title}>🎵 CryptoSong 🎵</Text>
       <Text style={styles.subtitle}>
-        Secure your messages through music
+        Secure messages through music
       </Text>
 
       <TouchableOpacity style={styles.button} onPress={() => router.push("/encryption")}>

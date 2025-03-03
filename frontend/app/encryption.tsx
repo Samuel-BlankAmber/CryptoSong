@@ -3,6 +3,8 @@ import * as FileSystem from 'expo-file-system';
 import { Platform, StyleSheet, TextInput, TouchableOpacity, Text, View } from 'react-native';
 import { Audio } from 'expo-av';
 import { RecordingOptions, AndroidOutputFormat, AndroidAudioEncoder, IOSOutputFormat, IOSAudioQuality } from 'expo-av/build/Audio/Recording';
+import * as Clipboard from 'expo-clipboard';
+import { generateAesKeyFromString, aesGcmEncrypt } from '../utils/cryptography';
 
 const LAMBDA_URL = 'REDACTED';
 
@@ -52,10 +54,15 @@ export default function EncryptionScreen() {
   const [cannotFindSong, setCannotFindSong] = useState(false);
   const [isSongTooLong, setIsSongTooLong] = useState(false);
   const [songInfo, setSongInfo] = useState<SongInfo | {}>({});
+  const [isEncrypting, setIsEncrypting] = useState(false);
+  const [encryptionFailed, setEncryptionFailed] = useState(false);
+  const [isEncryptionDone, setIsEncryptionDone] = useState(false);
 
   async function startRecording() {
     setCannotFindSong(false);
     setIsSongTooLong(false);
+    setEncryptionFailed(false);
+    setIsEncryptionDone(false);
     setSongInfo({});
     try {
       const { granted } = await Audio.requestPermissionsAsync();
@@ -132,6 +139,30 @@ export default function EncryptionScreen() {
     const subtitle = songInfo['track']['subtitle'];
     console.log('Song found:', title);
     console.log('Subtitle:', subtitle);
+    // Goes without saying, but this is highly insecure.
+    // Please do not use this to encrypt anything important,
+    // or risk having your data stolen.
+    const key = title + subtitle;
+    setIsEncrypting(true);
+    console.log('Encrypting text:', text);
+    let ciphertext;
+    try {
+      const aesKey = generateAesKeyFromString(key);
+      ciphertext = await aesGcmEncrypt(text, aesKey);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Failed to encrypt text', error);
+      } else {
+        console.error('An unknown error occurred when encrypting the text', error);
+      }
+      setEncryptionFailed(true);
+      setIsEncrypting(false);
+      return;
+    }
+    setIsEncrypting(false);
+    console.log('Ciphertext:', ciphertext);
+    await Clipboard.setStringAsync(ciphertext);
+    setIsEncryptionDone(true);
   }
 
   async function getSongInfo(songB64: string) {
@@ -187,6 +218,10 @@ export default function EncryptionScreen() {
           <Text style={styles.resultsText}>{songInfo.track.subtitle}</Text>
         </View>
       )}
+
+      {isEncrypting && <Text style={styles.resultsText}>Encrypting...</Text>}
+      {encryptionFailed && <Text style={styles.resultsText}>Failed to encrypt text</Text>}
+      {isEncryptionDone && <Text style={styles.resultsText}>Ciphertext copied to clipboard!</Text>}
     </View>
   );
 }

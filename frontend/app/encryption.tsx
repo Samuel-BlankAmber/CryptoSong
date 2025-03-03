@@ -10,7 +10,9 @@ const LAMBDA_URL = 'REDACTED';
 
 const isWeb = Platform.OS === 'web';
 
+// To use the API:
 // "The raw sound data must be 44100Hz, 1 channel (Mono), signed 16 bit PCM little endian."
+// The backend handles the conversion to PCM.
 const SHAZAM_RECORDING_OPTIONS: RecordingOptions = {
   isMeteringEnabled: true,
   android: {

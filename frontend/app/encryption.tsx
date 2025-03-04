@@ -1,56 +1,17 @@
 import { useState } from 'react';
 import { Platform, StyleSheet, TextInput, TouchableOpacity, Text, View } from 'react-native';
-import { Audio } from 'expo-av';
-import { RecordingOptions, AndroidOutputFormat, AndroidAudioEncoder, IOSOutputFormat, IOSAudioQuality } from 'expo-av/build/Audio/Recording';
-import * as FileSystem from 'expo-file-system';
 import * as Clipboard from 'expo-clipboard';
-import { generateAesKeyFromString, aesGcmEncrypt } from '../utils/cryptography';
-
-const LAMBDA_URL = 'REDACTED';
+import useAudioRecorder from '@/hooks/useAudioRecorder';
+import { getSongInfoFromUri } from '@/utils/audioHandler';
+import { encryptText } from '@/utils/cryptosystem';
+import { SongInfo } from '@/api/songRecognition';
 
 const isWeb = Platform.OS === 'web';
-
-// To use the API:
-// "The raw sound data must be 44100Hz, 1 channel (Mono), signed 16 bit PCM little endian."
-// The backend handles the conversion to PCM.
-const SHAZAM_RECORDING_OPTIONS: RecordingOptions = {
-  isMeteringEnabled: true,
-  android: {
-    extension: '.3gp',
-    outputFormat: AndroidOutputFormat.THREE_GPP,
-    audioEncoder: AndroidAudioEncoder.AMR_NB,
-    sampleRate: 44100,
-    numberOfChannels: 1,
-    bitRate: 44100 * 16 * 1,
-  },
-  ios: {
-    extension: '.m4a',
-    audioQuality: IOSAudioQuality.MIN,
-    outputFormat: IOSOutputFormat.MPEG4AAC,
-    sampleRate: 44100,
-    numberOfChannels: 1,
-    bitRate: 44100 * 16 * 1,
-    linearPCMBitDepth: 16,
-    linearPCMIsBigEndian: false,
-    linearPCMIsFloat: false,
-  },
-  web: {
-    mimeType: 'audio/webm',
-    bitsPerSecond: 44100 * 16 * 1,
-  },
-};
-
-interface SongInfo {
-  track: {
-    title: string;
-    subtitle: string;
-  };
-  matches: unknown[];
-}
 
 enum State {
   Idle,
   Recording,
+  ErrorWhileRecording,
   FindingSong,
   SongTooLong,
   NoSongFound,
@@ -62,149 +23,62 @@ enum State {
 
 export default function EncryptionScreen() {
   const [text, setText] = useState('');
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const { startRecording, stopRecording } = useAudioRecorder();
   const [songInfo, setSongInfo] = useState<SongInfo | {}>({});
   const [state, setState] = useState(State.Idle);
 
-  async function startRecording() {
-    setState(State.Idle);
+  async function handleStartRecording() {
+    setState(State.Recording);
     setSongInfo({});
-    try {
-      const { granted } = await Audio.requestPermissionsAsync();
-      if (!granted) return;
+    await startRecording();
+  }
 
-      console.log('Starting recording');
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-      const { recording } = await Audio.Recording.createAsync(SHAZAM_RECORDING_OPTIONS);
-      setRecording(recording);
-      setState(State.Recording);
+  async function handleStopRecording() {
+    let uri;
+    try {
+      uri = await stopRecording();
     } catch (error) {
-      console.error('Failed to start recording:', error);
-    }
-  }
-
-  async function stopRecording() {
-    if (!recording) return;
-    await recording.stopAndUnloadAsync();
-    await Audio.setAudioModeAsync(
-      {
-        allowsRecordingIOS: false,
-      }
-    );
-    const uri = recording.getURI()!;
-    console.log('Recording stopped and stored at:', uri);
-    setRecording(null);
-    await setSongInfoFromUri(uri);
-    await handleEncryption();
-  }
-
-  async function setSongInfoFromUri(songUri: string) {
-    setState(State.FindingSong);
-    const songB64 = await getRecordingBase64(songUri);
-
-    console.log('Song base64 length:', songB64.length);
-    if (songB64.length >= 500 * 1000) {
-      console.log('Song base64 is too large');
-      setState(State.SongTooLong);
+      console.error('Failed to stop recording:', error);
+      setState(State.ErrorWhileRecording);
       return;
     }
 
-    const songInfo = await getSongInfo(songB64);
-    if (Object.keys(songInfo).length === 0) {
-      console.log('Failed to get song info');
-      setState(State.ErrorWhileFindingSong);
-      return;
-    }
-
-    if (songInfo['matches'].length === 0) {
-      console.log('No song found');
-      setState(State.NoSongFound);
-      return;
-    }
-
-    setSongInfo(songInfo);
-  }
-
-  async function handleEncryption() {
-    // Goes without saying, but this is highly insecure.
-    // Please do not use this to encrypt anything important,
-    // or risk having your data stolen.
-
-    if (!('track' in songInfo)) {
-      console.error('No song found');
-      return;
-    }
-
-    const title = songInfo['track']['title'];
-    const subtitle = songInfo['track']['subtitle'];
-    const key = title + subtitle;
-    console.log('Song title:', title);
-    console.log('Subtitle:', subtitle);
-
-    setState(State.Encrypting);
-    console.log('Encrypting text:', text);
+    let songInfo;
     try {
-      const aesKey = generateAesKeyFromString(key);
-      const ciphertext = await aesGcmEncrypt(text, aesKey);
-      console.log('Ciphertext:', ciphertext);
-      await Clipboard.setStringAsync(ciphertext);
+      setState(State.FindingSong);
+      songInfo = await getSongInfoFromUri(uri, isWeb);
+      setSongInfo(songInfo);
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        console.error('Unknown error while finding song:', error);
+        setState(State.ErrorWhileFindingSong);
+        return;
+      }
+      if (error.message === 'Song base64 is too large') {
+        setState(State.SongTooLong);
+      } else if (error.message === 'No song found') {
+        setState(State.NoSongFound);
+      } else if (error.message === 'Failed to get song info') {
+        setState(State.ErrorWhileFindingSong);
+      } else {
+        console.error('Unknown error while finding song:', error);
+        setState(State.ErrorWhileFindingSong);
+      }
+      return;
+    }
+
+    let ciphertext;
+    try {
+      setState(State.Encrypting)
+      ciphertext = await encryptText(text, songInfo);
       setState(State.SuccessfulEncryption);
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        console.error('Failed to encrypt text', error);
-      } else {
-        console.error('An unknown error occurred when encrypting the text', error);
-      }
+    } catch (error) {
+      console.error('Failed to encrypt text:', error);
       setState(State.ErrorWhileEncrypting);
-    }
-  }
-
-  async function getRecordingBase64(uri: string) {
-    if (isWeb) {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const arrayBuffer = await blob.arrayBuffer();
-      const base64String = btoa(
-        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-      );
-      return base64String;
+      return;
     }
 
-    const fileInfo = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    return fileInfo;
-  }
-
-  async function getSongInfo(songB64: string) {
-    console.log('Attempting to send song to lambda');
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    try {
-      const response = await fetch(LAMBDA_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ song: songB64 }),
-      });
-      clearTimeout(timeoutId);
-      return await response.json();
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          console.error('Request timed out');
-        } else {
-          console.error('Failed to send song to lambda', error);
-        }
-      } else {
-        console.error('An unknown error occurred when sending the song to the lambda', error);
-      }
-      return {};
-    }
+    await Clipboard.setStringAsync(ciphertext);
   }
 
   return (
@@ -218,10 +92,11 @@ export default function EncryptionScreen() {
         onChangeText={setText}
       />
 
-      <TouchableOpacity style={styles.button} onPress={state === State.Recording ? stopRecording : startRecording}>
+      <TouchableOpacity style={styles.button} onPress={state === State.Recording ? handleStopRecording : handleStartRecording}>
         <Text style={styles.buttonText}>{state === State.Recording ? 'Stop Recording' : 'Start Recording'}</Text>
       </TouchableOpacity>
 
+      {state === State.ErrorWhileRecording && <Text style={styles.resultsText}>Failed to record audio</Text>}
       {state === State.FindingSong && <Text style={styles.resultsText}>Finding song...</Text>}
       {state === State.SongTooLong && <Text style={styles.resultsText}>Song is too long</Text>}
       {state === State.NoSongFound && <Text style={styles.resultsText}>No song found</Text>}

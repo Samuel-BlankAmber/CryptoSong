@@ -77,6 +77,7 @@ export default function EncryptionScreen() {
       return;
     }
 
+    console.log('Ciphertext:', ciphertext);
     await Clipboard.setStringAsync(ciphertext);
   }
 

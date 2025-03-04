@@ -9,10 +9,11 @@ export async function aesGcmEncrypt(plaintext: string, key: string): Promise<str
     throw new Error('AES key must be 32 bytes long, did you forget to use generateAesKeyFromString?');
   }
 
+  const plaintextBytes = new Uint8Array(new TextEncoder().encode(plaintext));
   const iv = forge.random.getBytesSync(12);
   const cipher = forge.cipher.createCipher('AES-GCM', key);
   cipher.start({ iv });
-  cipher.update(forge.util.createBuffer(plaintext));
+  cipher.update(forge.util.createBuffer(plaintextBytes));
   cipher.finish();
   const encrypted = cipher.output;
   const tag = cipher.mode.tag;

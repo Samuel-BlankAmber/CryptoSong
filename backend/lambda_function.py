@@ -5,19 +5,19 @@ import os
 import subprocess
 
 def convert_to_wav(song_data):
-    decoded_3gp_file = "/tmp/temp_audio.3gp"
-    wav_file = "/tmp/temp_audio.wav"
+    decoded_3gp_file = '/tmp/temp_audio.3gp'
+    wav_file = '/tmp/temp_audio.wav'
 
-    with open(decoded_3gp_file, "wb") as f:
+    with open(decoded_3gp_file, 'wb') as f:
         f.write(song_data)
 
     ffmpeg_command = [
-        "/opt/bin/ffmpeg", "-y", "-i", decoded_3gp_file, "-ar", "44100", "-ac", "1",
-        "-acodec", "pcm_s16le", wav_file
+        '/opt/bin/ffmpeg', '-y', '-i', decoded_3gp_file, '-ar', '44100', '-ac', '1',
+        '-acodec', 'pcm_s16le', wav_file,
     ]
     subprocess.run(ffmpeg_command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    with open(wav_file, "rb") as f:
+    with open(wav_file, 'rb') as f:
         wav_data = f.read()
     return wav_data
 
@@ -26,16 +26,16 @@ def get_song_info(wav_data):
     if not api_key:
         raise ValueError('API_KEY environment variable is not set')
 
-    conn = http.client.HTTPSConnection("shazam.p.rapidapi.com")
+    conn = http.client.HTTPSConnection('shazam.p.rapidapi.com')
     headers = {
         'x-rapidapi-key': api_key,
-        'x-rapidapi-host': "shazam.p.rapidapi.com",
-        'Content-Type': "text/plain"
+        'x-rapidapi-host': 'shazam.p.rapidapi.com',
+        'Content-Type': 'text/plain',
     }
-    conn.request("POST", "/songs/v2/detect", wav_data, headers)
+    conn.request('POST', '/songs/v2/detect', wav_data, headers)
     res = conn.getresponse()
     data = res.read()
-    return json.loads(data.decode("utf-8"))
+    return json.loads(data.decode('utf-8'))
 
 def lambda_handler(event, _context):
     method = event['requestContext']['http']['method']
@@ -46,7 +46,7 @@ def lambda_handler(event, _context):
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type'
+                'Access-Control-Allow-Headers': 'Content-Type',
             },
             'body': None,
         }
@@ -57,7 +57,7 @@ def lambda_handler(event, _context):
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type'
+                'Access-Control-Allow-Headers': 'Content-Type',
             },
             'body': json.dumps({'error': 'Method Not Allowed'}),
         }
@@ -74,7 +74,7 @@ def lambda_handler(event, _context):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type'
+            'Access-Control-Allow-Headers': 'Content-Type',
         },
         'body': json.dumps(song_info),
     }

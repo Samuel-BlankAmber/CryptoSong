@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Platform, StyleSheet, TextInput, TouchableOpacity, Text, View } from 'react-native';
+import { Platform, StyleSheet, TextInput, TouchableOpacity, Text, View, ActivityIndicator } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import useAudioRecorder from '@/hooks/useAudioRecorder';
 import { getSongInfoFromUri } from '@/utils/audioHandler';
 import { encryptText } from '@/utils/cryptosystem';
 import { SongInfo } from '@/api/songRecognition';
+import { useRouter } from 'expo-router';
 
 const isWeb = Platform.OS === 'web';
 
@@ -22,6 +23,7 @@ enum State {
 }
 
 export default function EncryptionScreen() {
+  const router = useRouter();
   const [text, setText] = useState('');
   const { startRecording, stopRecording } = useAudioRecorder();
   const [songInfo, setSongInfo] = useState<SongInfo | {}>({});
@@ -58,10 +60,7 @@ export default function EncryptionScreen() {
         setState(State.SongTooLong);
       } else if (error.message === 'No song found') {
         setState(State.NoSongFound);
-      } else if (error.message === 'Failed to get song info') {
-        setState(State.ErrorWhileFindingSong);
       } else {
-        console.error('Unknown error while finding song:', error);
         setState(State.ErrorWhileFindingSong);
       }
       return;
@@ -69,7 +68,7 @@ export default function EncryptionScreen() {
 
     let ciphertext;
     try {
-      setState(State.Encrypting)
+      setState(State.Encrypting);
       ciphertext = await encryptText(text, songInfo);
       setState(State.SuccessfulEncryption);
     } catch (error) {
@@ -86,32 +85,43 @@ export default function EncryptionScreen() {
       <Text style={styles.title}>🎵 Encryption 🎵</Text>
       <TextInput
         style={styles.input}
-        placeholder='Enter text to encrypt'
-        placeholderTextColor={'#888'}
+        placeholder="Enter text to encrypt"
+        placeholderTextColor={'#AAA'}
         value={text}
         onChangeText={setText}
       />
 
-      <TouchableOpacity style={styles.button} onPress={state === State.Recording ? handleStopRecording : handleStartRecording}>
-        <Text style={styles.buttonText}>{state === State.Recording ? 'Stop Recording' : 'Start Recording'}</Text>
+      <TouchableOpacity
+        style={[styles.button, state === State.Recording && styles.buttonRecording]}
+        onPress={state === State.Recording ? handleStopRecording : handleStartRecording}
+      >
+        <Text style={styles.buttonText}>
+          {state === State.Recording ? 'Stop Recording' : 'Start Recording'}
+        </Text>
       </TouchableOpacity>
 
-      {state === State.ErrorWhileRecording && <Text style={styles.resultsText}>Failed to record audio</Text>}
-      {state === State.FindingSong && <Text style={styles.resultsText}>Finding song...</Text>}
-      {state === State.SongTooLong && <Text style={styles.resultsText}>Song is too long</Text>}
-      {state === State.NoSongFound && <Text style={styles.resultsText}>No song found</Text>}
-      {state == State.ErrorWhileFindingSong && <Text style={styles.resultsText}>Failed to find song</Text>}
+      {state === State.FindingSong && <ActivityIndicator size="large" color="#1DB954" />}
+      {state === State.Encrypting && <ActivityIndicator size="large" color="#1DB954" />}
+
+      {state === State.ErrorWhileRecording && <Text style={styles.errorText}>Failed to record audio</Text>}
+      {state === State.SongTooLong && <Text style={styles.errorText}>Song is too long</Text>}
+      {state === State.NoSongFound && <Text style={styles.errorText}>No song found</Text>}
+      {state === State.ErrorWhileFindingSong && <Text style={styles.errorText}>Failed to find song</Text>}
+      {state === State.ErrorWhileEncrypting && <Text style={styles.errorText}>Failed to encrypt text</Text>}
+
       {'track' in songInfo && (
-        <View>
+        <View style={styles.songInfoContainer}>
           <Text style={styles.resultsText}>Song found:</Text>
-          <Text style={styles.resultsText}>{songInfo.track.title}</Text>
-          <Text style={styles.resultsText}>{songInfo.track.subtitle}</Text>
+          <Text style={styles.songTitle}>{songInfo.track.title}</Text>
+          <Text style={styles.songSubtitle}>{songInfo.track.subtitle}</Text>
         </View>
       )}
 
-      {state === State.Encrypting && <Text style={styles.resultsText}>Encrypting...</Text>}
-      {state === State.ErrorWhileEncrypting && <Text style={styles.resultsText}>Failed to encrypt text</Text>}
-      {state === State.SuccessfulEncryption && <Text style={styles.resultsText}>Ciphertext copied to clipboard!</Text>}
+      {state === State.SuccessfulEncryption && <Text style={styles.successText}>Ciphertext copied to clipboard!</Text>}
+
+      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <Text style={styles.backButtonText}>Back</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -125,29 +135,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
     marginBottom: 20,
   },
   input: {
     height: 50,
-    borderColor: '#666',
-    borderWidth: 1,
-    backgroundColor: '#222',
+    borderBottomWidth: 2,
+    borderBottomColor: '#1DB954',
+    backgroundColor: '#333',
     color: 'white',
     paddingHorizontal: 15,
     width: '80%',
     borderRadius: 8,
-    marginBottom: 10,
   },
   button: {
     backgroundColor: '#1DB954',
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 50,
     borderRadius: 25,
     marginTop: 10,
+    marginBottom: 10,
     width: '80%',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  buttonRecording: {
+    backgroundColor: '#D32F2F',
   },
   buttonText: {
     color: '#FFFFFF',
@@ -155,8 +173,48 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   resultsText: {
-    color: '#888',
+    color: '#FFF',
+    fontSize: 16,
+  },
+  errorText: {
+    color: '#FF5252',
     fontSize: 16,
     marginTop: 10,
+  },
+  successText: {
+    color: '#4CAF50',
+    fontSize: 16,
+    marginTop: 10,
+  },
+  songInfoContainer: {
+    marginTop: 10,
+    alignItems: 'center',
+    backgroundColor: '#222',
+    padding: 10,
+    borderRadius: 10,
+    width: '80%',
+  },
+  songTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  songSubtitle: {
+    color: '#AAA',
+    fontSize: 16,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    backgroundColor: '#1DB954',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+  },
+  backButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

@@ -28,8 +28,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
     backgroundColor: '#FFF',
+    paddingHorizontal: 20,
   },
   logo: {
     width: 120,
@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
     marginBottom: 5,
   },

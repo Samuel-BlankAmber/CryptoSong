@@ -8,6 +8,14 @@
 
 CryptoSong is a React Native app built with Expo Go that encrypts using music. It recognises songs using a Shazam API and generates an AES-GCM encryption key by SHA-256 hashing the song title and artist.
 
+## Screenshots
+
+<div style="display: flex; justify-content: space-around;">
+  <img src="assets/home.png" alt="Home Menu" width="300"/>
+  <img src="assets/encryption.png" alt="Encryption Screen" width="300"/>
+  <img src="assets/decryption.png" alt="Decryption Screen" width="300"/>
+</div>
+
 ## Setup Guide
 
 ### Setup Backend
